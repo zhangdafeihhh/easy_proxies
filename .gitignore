@@ -15,6 +15,7 @@ nodes.txt
 # IDE and editor
 .idea/
 .vscode/
+.serena/
 *.swp
 *.swo
 *~

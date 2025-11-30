@@ -1,103 +1,103 @@
 # Easy Proxies
 
-[English](README_EN.md) | 简体中文
+English | [简体中文](README_ZH.md)
 
-基于 [sing-box](https://github.com/SagerNet/sing-box) 的代理节点池管理工具，支持多协议、多节点自动故障转移和负载均衡。
+A proxy node pool management tool based on [sing-box](https://github.com/SagerNet/sing-box), supporting multiple protocols, automatic failover, and load balancing.
 
-## 特性
+## Features
 
-- **多协议支持**: VMess、VLESS、Hysteria2、Shadowsocks、Trojan
-- **多种传输层**: TCP、WebSocket、HTTP/2、gRPC、HTTPUpgrade
-- **订阅链接支持**: 自动从订阅链接获取节点，支持 Base64、Clash YAML 等格式
-- **订阅定时刷新**: 自动定时刷新订阅，支持 WebUI 手动触发（⚠️ 刷新会导致连接中断）
-- **节点池模式**: 自动故障转移、负载均衡
-- **多端口模式**: 每个节点独立监听端口
-- **Web 监控面板**: 实时查看节点状态、延迟探测、一键导出节点
-- **密码保护**: WebUI 支持密码认证，保护节点信息安全
-- **自动健康检查**: 启动时自动检测所有节点可用性，定期（5分钟）检查节点状态
-- **智能节点过滤**: 自动过滤不可用节点，WebUI 和导出按延迟排序
-- **灵活配置**: 支持配置文件、节点文件、订阅链接多种方式
+- **Multi-Protocol Support**: VMess, VLESS, Hysteria2, Shadowsocks, Trojan
+- **Multiple Transports**: TCP, WebSocket, HTTP/2, gRPC, HTTPUpgrade
+- **Subscription Support**: Auto-fetch nodes from subscription links (Base64, Clash YAML, etc.)
+- **Subscription Auto-Refresh**: Automatic periodic refresh with WebUI manual trigger (⚠️ causes connection interruption)
+- **Pool Mode**: Automatic failover and load balancing
+- **Multi-Port Mode**: Each node listens on independent port
+- **Web Dashboard**: Real-time node status, latency probing, one-click export
+- **Password Protection**: WebUI authentication support
+- **Auto Health Check**: Initial check on startup, periodic checks every 5 minutes
+- **Smart Node Filtering**: Auto-hide unavailable nodes, sort by latency
+- **Flexible Configuration**: Config file, node file, subscription links
 
-## 快速开始
+## Quick Start
 
-### 1. 配置
+### 1. Configuration
 
-复制示例配置文件：
+Copy example config files:
 
 ```bash
 cp config.example.yaml config.yaml
 cp nodes.example nodes.txt
 ```
 
-编辑 `config.yaml` 配置监听地址和认证信息，编辑 `nodes.txt` 添加代理节点。
+Edit `config.yaml` to set listen address and credentials, edit `nodes.txt` to add proxy nodes.
 
-### 2. 运行
+### 2. Run
 
-**Docker 方式（推荐）：**
+**Docker (Recommended):**
 
 ```bash
 ./start.sh
 ```
 
-或手动执行：
+Or manually:
 
 ```bash
 docker compose up -d
 ```
 
-**本地编译运行：**
+**Local Build:**
 
 ```bash
 go build -tags "with_utls with_quic with_grpc" -o easy-proxies ./cmd/easy_proxies
 ./easy-proxies --config config.yaml
 ```
 
-## 配置说明
+## Configuration
 
-### 基础配置
+### Basic Config
 
 ```yaml
-mode: pool                    # 运行模式: pool (节点池) 或 multi-port (多端口)
-log_level: info               # 日志级别: debug, info, warn, error
-external_ip: ""               # 外部 IP 地址，用于导出时替换 0.0.0.0（Docker 部署时建议配置）
+mode: pool                    # Mode: pool or multi-port
+log_level: info               # Log level: debug, info, warn, error
+external_ip: ""               # External IP for export (recommended for Docker)
 
-# 订阅链接（可选，支持多个）
+# Subscription URLs (optional, multiple supported)
 subscriptions:
   - "https://example.com/subscribe"
 
-# 管理接口
+# Management Interface
 management:
   enabled: true
-  listen: 0.0.0.0:9090        # Web 监控面板地址
-  probe_target: www.apple.com:80  # 延迟探测目标
-  password: ""                # WebUI 访问密码，为空则不需要密码（可选）
+  listen: 0.0.0.0:9090        # Web dashboard address
+  probe_target: www.apple.com:80  # Latency probe target
+  password: ""                # WebUI password (optional)
 
-# 统一入口监听
+# Unified Entry Listener
 listener:
   address: 0.0.0.0
   port: 2323
   username: username
   password: password
 
-# 节点池配置
+# Pool Settings
 pool:
-  mode: sequential            # sequential (顺序) 或 random (随机)
-  failure_threshold: 3        # 失败阈值，超过后拉黑节点
-  blacklist_duration: 24h     # 拉黑时长
+  mode: sequential            # sequential or random
+  failure_threshold: 3        # Failures before blacklist
+  blacklist_duration: 24h     # Blacklist duration
 
-# 多端口模式
+# Multi-Port Mode
 multi_port:
   address: 0.0.0.0
-  base_port: 24000            # 起始端口，节点依次递增
+  base_port: 24000            # Starting port, auto-increment
   username: mpuser
   password: mppass
 ```
 
-### 运行模式详解
+### Operating Modes
 
-#### Pool 模式（节点池）
+#### Pool Mode
 
-所有节点共享一个入口地址，程序自动选择可用节点：
+All nodes share a single entry point, program auto-selects available nodes:
 
 ```yaml
 mode: pool
@@ -109,67 +109,66 @@ listener:
   password: pass
 
 pool:
-  mode: sequential  # sequential (顺序) 或 random (随机)
+  mode: sequential  # sequential or random
   failure_threshold: 3
   blacklist_duration: 24h
 ```
 
-**适用场景：** 自动故障转移、负载均衡
+**Use Case:** Automatic failover, load balancing
 
-**使用方式：** 配置代理为 `http://user:pass@localhost:2323`
+**Usage:** Set proxy to `http://user:pass@localhost:2323`
 
-#### Multi-Port 模式（多端口）
+#### Multi-Port Mode
 
-每个节点独立监听一个端口，精确控制使用哪个节点：
+Each node listens on its own port for precise control:
 
-**配置格式：** 支持两种写法
+**Config Format:** Two syntaxes supported
 
 ```yaml
-mode: multi-port  # 推荐：连字符格式
-# 或
-mode: multi_port  # 兼容：下划线格式
+mode: multi-port  # Recommended: hyphen format
+# or
+mode: multi_port  # Compatible: underscore format
 ```
 
-**完整配置示例：**
+**Full Example:**
 
 ```yaml
 mode: multi-port
 
 multi_port:
   address: 0.0.0.0
-  base_port: 24000  # 端口从这里开始自动递增
+  base_port: 24000  # Ports auto-increment from here
   username: user
   password: pass
 
-# 使用 nodes_file 简化配置
 nodes_file: nodes.txt
 ```
 
-**启动时输出：**
+**Startup Output:**
 
 ```
 📡 Proxy Links:
 ═══════════════════════════════════════════════════════════════
 🔌 Multi-Port Mode (3 nodes):
 
-   [24000] 台湾节点
+   [24000] Taiwan Node
        http://user:pass@0.0.0.0:24000
-   [24001] 香港节点
+   [24001] Hong Kong Node
        http://user:pass@0.0.0.0:24001
-   [24002] 美国节点
+   [24002] US Node
        http://user:pass@0.0.0.0:24002
 ═══════════════════════════════════════════════════════════════
 ```
 
-**适用场景：** 需要指定特定节点、测试节点性能
+**Use Case:** Specific node selection, performance testing
 
-**使用方式：** 每个节点有独立的代理地址，可精确选择
+**Usage:** Each node has independent proxy address
 
-### 节点配置
+### Node Configuration
 
-**方式 1: 使用订阅链接（推荐）**
+**Method 1: Subscription Links (Recommended)**
 
-支持从订阅链接自动获取节点，支持多种格式：
+Auto-fetch nodes from subscription URLs:
 
 ```yaml
 subscriptions:
@@ -177,181 +176,181 @@ subscriptions:
   - "https://example.com/subscribe/clash"
 ```
 
-支持的订阅格式：
-- **Base64 编码**: V2Ray 标准订阅格式
-- **Clash YAML**: Clash 配置文件格式
-- **纯文本**: 每行一个节点 URI
+Supported formats:
+- **Base64 Encoded**: V2Ray standard subscription
+- **Clash YAML**: Clash config format
+- **Plain Text**: One URI per line
 
-**方式 2: 使用节点文件**
+**Method 2: Node File**
 
-在 `config.yaml` 中指定：
+Specify in `config.yaml`:
 
 ```yaml
 nodes_file: nodes.txt
 ```
 
-`nodes.txt` 每行一个节点 URI：
+`nodes.txt` - one URI per line:
 
 ```
-vless://uuid@server:443?security=reality&sni=example.com#节点名称
-hysteria2://password@server:443?sni=example.com#HY2节点
-ss://base64@server:8388#SS节点
-trojan://password@server:443?sni=example.com#Trojan节点
-vmess://base64...#VMess节点
+vless://uuid@server:443?security=reality&sni=example.com#NodeName
+hysteria2://password@server:443?sni=example.com#HY2Node
+ss://base64@server:8388#SSNode
+trojan://password@server:443?sni=example.com#TrojanNode
+vmess://base64...#VMessNode
 ```
 
-**方式 3: 直接在配置文件中**
+**Method 3: Direct in Config**
 
 ```yaml
 nodes:
-  - uri: "vless://uuid@server:443#节点1"
+  - uri: "vless://uuid@server:443#Node1"
   - name: custom-name
     uri: "ss://base64@server:8388"
-    port: 24001  # 可选，手动指定端口
+    port: 24001  # Optional, manual port
 ```
 
-> **提示**: 可以同时使用多种方式，节点会自动合并。
+> **Tip**: Multiple methods can be combined, nodes are merged automatically.
 
-## 支持的协议
+## Supported Protocols
 
-| 协议 | URI 格式 | 特性 |
-|------|----------|------|
-| VMess | `vmess://` | WebSocket、HTTP/2、gRPC、TLS |
-| VLESS | `vless://` | Reality、XTLS-Vision、多传输层 |
-| Hysteria2 | `hysteria2://` | 带宽控制、混淆 |
-| Shadowsocks | `ss://` | 多加密方式 |
-| Trojan | `trojan://` | TLS、多传输层 |
+| Protocol | URI Format | Features |
+|----------|------------|----------|
+| VMess | `vmess://` | WebSocket, HTTP/2, gRPC, TLS |
+| VLESS | `vless://` | Reality, XTLS-Vision, multiple transports |
+| Hysteria2 | `hysteria2://` | Bandwidth control, obfuscation |
+| Shadowsocks | `ss://` | Multiple ciphers |
+| Trojan | `trojan://` | TLS, multiple transports |
 
-### VMess 参数
+### VMess Parameters
 
-VMess 支持两种 URI 格式：
+VMess supports two URI formats:
 
-**格式一：Base64 JSON（标准格式）**
+**Format 1: Base64 JSON (Standard)**
 ```
-vmess://base64({"v":"2","ps":"名称","add":"server","port":443,"id":"uuid","aid":0,"scy":"auto","net":"ws","type":"","host":"example.com","path":"/path","tls":"tls","sni":"example.com"})
+vmess://base64({"v":"2","ps":"Name","add":"server","port":443,"id":"uuid","aid":0,"scy":"auto","net":"ws","type":"","host":"example.com","path":"/path","tls":"tls","sni":"example.com"})
 ```
 
-**格式二：URL 格式**
+**Format 2: URL Format**
 ```
-vmess://uuid@server:port?encryption=auto&security=tls&sni=example.com&type=ws&host=example.com&path=/path#名称
+vmess://uuid@server:port?encryption=auto&security=tls&sni=example.com&type=ws&host=example.com&path=/path#Name
 ```
 
 - `net/type`: tcp, ws, h2, grpc
-- `tls/security`: tls 或空
-- `scy/encryption`: auto, aes-128-gcm, chacha20-poly1305 等
+- `tls/security`: tls or empty
+- `scy/encryption`: auto, aes-128-gcm, chacha20-poly1305, etc.
 
-### VLESS 参数
+### VLESS Parameters
 
 ```
-vless://uuid@server:port?encryption=none&security=reality&sni=example.com&fp=chrome&pbk=xxx&sid=xxx&type=tcp&flow=xtls-rprx-vision#名称
+vless://uuid@server:port?encryption=none&security=reality&sni=example.com&fp=chrome&pbk=xxx&sid=xxx&type=tcp&flow=xtls-rprx-vision#Name
 ```
 
 - `security`: none, tls, reality
 - `type`: tcp, ws, http, grpc, httpupgrade
-- `flow`: xtls-rprx-vision (仅 TCP)
-- `fp`: 指纹 (chrome, firefox, safari 等)
+- `flow`: xtls-rprx-vision (TCP only)
+- `fp`: fingerprint (chrome, firefox, safari, etc.)
 
-### Hysteria2 参数
+### Hysteria2 Parameters
 
 ```
-hysteria2://password@server:port?sni=example.com&insecure=0&obfs=salamander&obfs-password=xxx#名称
+hysteria2://password@server:port?sni=example.com&insecure=0&obfs=salamander&obfs-password=xxx#Name
 ```
 
-- `upMbps` / `downMbps`: 带宽限制
-- `obfs`: 混淆类型
-- `obfs-password`: 混淆密码
+- `upMbps` / `downMbps`: Bandwidth limits
+- `obfs`: Obfuscation type
+- `obfs-password`: Obfuscation password
 
-## Web 监控面板
+## Web Dashboard
 
-访问 `http://localhost:9090` 查看：
+Access `http://localhost:9090` to view:
 
-- 节点状态（健康/警告/异常/拉黑）
-- 实时延迟
-- 活跃连接数
-- 失败次数统计
-- 手动探测延迟
-- 解除节点拉黑
-- **一键导出节点**: 导出所有可用节点的代理池 URI（格式：`http://user:pass@host:port`）
+- Node status (Healthy/Warning/Error/Blacklisted)
+- Real-time latency
+- Active connections
+- Failure count
+- Manual latency probing
+- Release blacklisted nodes
+- **One-click Export**: Export all available nodes as proxy URIs (`http://user:pass@host:port`)
 
-### 健康检查机制
+### Health Check Mechanism
 
-程序启动时会自动对所有节点进行健康检查，之后定期检查：
+Auto health check on startup, then periodic checks:
 
-- **初始检查**: 启动后立即检测所有节点的连通性
-- **定期检查**: 每 5 分钟检查一次所有节点状态
-- **智能过滤**: 不可用节点自动从 WebUI 和导出列表中隐藏
-- **探测目标**: 通过 `management.probe_target` 配置（默认 `www.apple.com:80`）
+- **Initial Check**: Test all nodes immediately after startup
+- **Periodic Check**: Every 5 minutes
+- **Smart Filtering**: Hide unavailable nodes from WebUI and export
+- **Probe Target**: Configure via `management.probe_target` (default `www.apple.com:80`)
 
 ```yaml
 management:
   enabled: true
   listen: 0.0.0.0:9090
-  probe_target: www.apple.com:80  # 健康检查探测目标
+  probe_target: www.apple.com:80  # Health check target
 ```
 
-### 密码保护
+### Password Protection
 
-为了保护节点信息安全，可以为 WebUI 设置访问密码：
+Protect node information with WebUI password:
 
 ```yaml
 management:
   enabled: true
   listen: 0.0.0.0:9090
-  password: "your_secure_password"  # 设置 WebUI 访问密码
+  password: "your_secure_password"
 ```
 
-- 如果 `password` 为空或不设置，则无需密码即可访问
-- 设置密码后，首次访问会弹出登录界面
-- 登录成功后，session 会保存 7 天
+- Empty or unset `password` means no authentication required
+- Login prompt appears on first access when password is set
+- Session persists for 7 days after login
 
-### 订阅定时刷新
+### Subscription Auto-Refresh
 
-支持定时自动刷新订阅链接，获取最新节点：
+Automatic periodic subscription refresh:
 
 ```yaml
 subscription_refresh:
-  enabled: true                 # 启用定时刷新
-  interval: 1h                  # 刷新间隔（默认 1 小时）
-  timeout: 30s                  # 获取订阅超时
-  health_check_timeout: 60s     # 新节点健康检查超时
-  drain_timeout: 30s            # 旧实例排空超时
-  min_available_nodes: 1        # 最少可用节点数，低于此值不切换
+  enabled: true                 # Enable auto-refresh
+  interval: 1h                  # Refresh interval (default 1 hour)
+  timeout: 30s                  # Fetch timeout
+  health_check_timeout: 60s     # New node health check timeout
+  drain_timeout: 30s            # Old instance drain timeout
+  min_available_nodes: 1        # Minimum available nodes required
 ```
 
-> ⚠️ **重要提示：订阅刷新会导致连接中断**
+> ⚠️ **Important: Subscription refresh causes connection interruption**
 >
-> 订阅刷新时，程序会**重启 sing-box 内核**以加载新节点配置。这意味着：
+> During subscription refresh, the program **restarts the sing-box core** to load new node configuration. This means:
 >
-> - **所有现有连接将被断开**
-> - 正在进行的下载、流媒体播放等会中断
-> - 客户端需要重新建立连接
+> - **All existing connections will be disconnected**
+> - Ongoing downloads, streaming, etc. will be interrupted
+> - Clients need to reconnect
 >
-> **建议：**
-> - 将刷新间隔设置为较长时间（如 `1h` 或更长）
-> - 避免在业务高峰期手动触发刷新
-> - 如果对连接稳定性要求极高，建议关闭此功能（`enabled: false`）
+> **Recommendations:**
+> - Set longer refresh intervals (e.g., `1h` or more)
+> - Avoid manual refresh during peak usage
+> - Disable if connection stability is critical (`enabled: false`)
 
-**WebUI 和 API 支持：**
+**WebUI and API Support:**
 
-- WebUI 显示订阅状态（节点数、上次刷新时间、错误信息）
-- 支持手动触发刷新按钮
-- API 端点：
-  - `GET /api/subscription/status` - 获取订阅状态
-  - `POST /api/subscription/refresh` - 手动触发刷新
+- WebUI shows subscription status (node count, last refresh time, errors)
+- Manual refresh button available
+- API endpoints:
+  - `GET /api/subscription/status` - Get subscription status
+  - `POST /api/subscription/refresh` - Trigger manual refresh
 
-## 端口说明
+## Ports
 
-| 端口 | 用途 |
-|------|------|
-| 2323 | 统一代理入口（节点池模式） |
-| 9090 | Web 监控面板 |
-| 24000+ | 多端口模式，每节点独立端口 |
+| Port | Purpose |
+|------|---------|
+| 2323 | Unified proxy entry (Pool mode) |
+| 9090 | Web dashboard |
+| 24000+ | Multi-port mode, per-node ports |
 
-## Docker 部署
+## Docker Deployment
 
-**方式一：主机网络模式（推荐）**
+**Method 1: Host Network Mode (Recommended)**
 
-使用 `network_mode: host` 直接使用主机网络，无需手动映射端口：
+Use `network_mode: host` for direct host network access:
 
 ```yaml
 # docker-compose.yml
@@ -366,11 +365,11 @@ services:
       - ./nodes.txt:/etc/easy-proxies/nodes.txt:ro
 ```
 
-> **优点**: 容器直接使用主机网络，所有端口自动对外开放，无需手动配置端口映射。
+> **Advantage**: Container uses host network directly, all ports exposed automatically.
 
-**方式二：端口映射模式**
+**Method 2: Port Mapping Mode**
 
-手动指定需要映射的端口：
+Manually specify port mappings:
 
 ```yaml
 # docker-compose.yml
@@ -380,26 +379,26 @@ services:
     container_name: easy-proxies
     restart: unless-stopped
     ports:
-      - "2323:2323"       # Pool 模式入口
-      - "9091:9091"       # Web 监控面板
-      - "24000-24100:24000-24100"  # Multi-port 模式
+      - "2323:2323"       # Pool mode entry
+      - "9091:9091"       # Web dashboard
+      - "24000-24100:24000-24100"  # Multi-port mode
     volumes:
       - ./config.yaml:/etc/easy-proxies/config.yaml:ro
       - ./nodes.txt:/etc/easy-proxies/nodes.txt:ro
 ```
 
-> **注意**: 多端口模式需要映射对应的端口范围。如果有 N 个节点，需要开放 `24000` 到 `24000+N-1` 的端口。
+> **Note**: Multi-port mode requires mapping the port range. For N nodes, open ports `24000` to `24000+N-1`.
 
-## 构建
+## Building
 
 ```bash
-# 基础构建
+# Basic build
 go build -o easy-proxies ./cmd/easy_proxies
 
-# 完整功能构建
+# Full feature build
 go build -tags "with_utls with_quic with_grpc with_wireguard with_gvisor" -o easy-proxies ./cmd/easy_proxies
 ```
 
-## 许可证
+## License
 
 MIT License
