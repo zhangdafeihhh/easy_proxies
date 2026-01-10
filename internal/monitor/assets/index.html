@@ -191,6 +191,19 @@
       font-weight: 500;
     }
 
+    .export-url {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 10px;
+    }
+
+    .export-url .form-input {
+      margin: 0;
+      padding: 10px 12px;
+      font-size: 13px;
+    }
+
     /* Nodes Grid */
     .nodes-grid {
       display: grid;
@@ -962,6 +975,14 @@
         <div class="stat-value" style="font-size: 24px;" id="subscriptionStatus">-</div>
         <div class="stat-trend" id="subscriptionTrend">未启用</div>
       </div>
+      <div class="stat-card" id="exportUrlCard">
+        <div class="stat-label">订阅地址</div>
+        <div class="export-url">
+          <input class="form-input" id="exportUrlInput" placeholder="暂无订阅地址" readonly />
+          <button class="btn btn-secondary btn-sm" onclick="copyExportUrl()">复制</button>
+        </div>
+        <div class="stat-trend" id="exportUrlHint">加载中...</div>
+      </div>
     </div>
 
     <div id="nodesContainer" class="nodes-grid"></div>
@@ -1208,6 +1229,7 @@
           document.getElementById('loginOverlay').classList.remove('show');
           showToast('登录成功！', 'success');
           refresh();
+          loadExportUrl();
         } else {
           loginError.textContent = data.error || '登录失败';
           loginError.classList.add('show');
@@ -1244,6 +1266,61 @@
         showToast('节点导出成功！', 'success');
       } catch (err) {
         showToast('导出失败: ' + err.message, 'error');
+      }
+    }
+
+    async function loadExportUrl() {
+      const input = document.getElementById('exportUrlInput');
+      const hint = document.getElementById('exportUrlHint');
+      if (!input || !hint) return;
+
+      try {
+        const res = await fetch('/api/export/url');
+        if (res.status === 401) {
+          hint.textContent = '需要先登录后获取订阅地址';
+          hint.style.color = 'var(--warning)';
+          return;
+        }
+        const data = await res.json();
+        input.value = data.export_url || '';
+
+        if (data.warning) {
+          hint.textContent = data.warning;
+          hint.style.color = 'var(--warning)';
+          return;
+        }
+
+        if (!data.export_url) {
+          hint.textContent = '请先在设置中填写 external_ip';
+          hint.style.color = 'var(--warning)';
+          return;
+        }
+
+        if (data.auth_required) {
+          hint.textContent = '管理密码已启用，订阅接口需先登录获取 Cookie';
+          hint.style.color = 'var(--text-secondary)';
+          return;
+        }
+
+        hint.textContent = '可直接作为订阅地址使用';
+        hint.style.color = 'var(--success)';
+      } catch (err) {
+        hint.textContent = '订阅地址获取失败，可在设置中填写 external_ip';
+        hint.style.color = 'var(--warning)';
+      }
+    }
+
+    async function copyExportUrl() {
+      const input = document.getElementById('exportUrlInput');
+      if (!input || !input.value) {
+        showToast('暂无可复制的订阅地址', 'error');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(input.value);
+        showToast('订阅地址已复制', 'success');
+      } catch (err) {
+        showToast('复制失败，请手动复制', 'error');
       }
     }
 
@@ -1796,6 +1873,7 @@
             showToast('设置保存成功', 'success');
           }
           hideSettingsModal();
+          loadExportUrl();
         } else {
           errorEl.textContent = data.error || '保存失败';
           errorEl.classList.add('show');
@@ -2056,6 +2134,7 @@
         isAuthenticated = true;
         refresh();
         fetchSubscriptionStatus();
+        loadExportUrl();
         startAutoRefresh();
       }
     })();

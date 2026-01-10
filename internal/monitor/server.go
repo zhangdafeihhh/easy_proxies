@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -65,6 +67,10 @@ type Server struct {
 	sessionToken string // 简单的 session token，重启后失效
 	subRefresher SubscriptionRefresher
 	nodeMgr      NodeManager
+
+	autoExternalIP   string
+	autoExternalIPAt time.Time
+	autoExternalIPMu sync.Mutex
 }
 
 // NewServer constructs a server; it can be nil when disabled.
@@ -93,6 +99,7 @@ func NewServer(cfg Config, mgr *Manager, logger *log.Logger) *Server {
 	mux.HandleFunc("/api/nodes/", s.withAuth(s.handleNodeAction))
 	mux.HandleFunc("/api/debug", s.withAuth(s.handleDebug))
 	mux.HandleFunc("/api/export", s.withAuth(s.handleExport))
+	mux.HandleFunc("/api/export/url", s.withAuth(s.handleExportURL))
 	mux.HandleFunc("/api/subscription/status", s.withAuth(s.handleSubscriptionStatus))
 	mux.HandleFunc("/api/subscription/refresh", s.withAuth(s.handleSubscriptionRefresh))
 	mux.HandleFunc("/api/reload", s.withAuth(s.handleReload))
@@ -518,6 +525,130 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Disposition", "attachment; filename=proxy_pool.txt")
 	_, _ = w.Write([]byte(strings.Join(lines, "\n")))
+}
+
+// handleExportURL returns a subscription URL for /api/export with best-effort public IP detection.
+func (s *Server) handleExportURL(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	scheme := requestScheme(r)
+	host, port := splitListenHostPort(s.cfg.Listen)
+	if port == "" {
+		port = "9090"
+	}
+
+	externalIP, ipSource := s.resolveExternalIP()
+	warning := ""
+
+	if isLoopbackOrWildcard(host) {
+		if externalIP == "" {
+			warning = "未获取到公网 IP，请在设置中填写 external_ip"
+			host = ""
+		} else {
+			host = externalIP
+		}
+	}
+
+	exportURL := ""
+	if host != "" {
+		exportURL = fmt.Sprintf("%s://%s:%s/api/export", scheme, host, port)
+	}
+
+	writeJSON(w, map[string]any{
+		"export_url":    exportURL,
+		"external_ip":   externalIP,
+		"ip_source":     ipSource,
+		"warning":       warning,
+		"auth_required": s.cfg.Password != "",
+	})
+}
+
+func (s *Server) resolveExternalIP() (string, string) {
+	extIP, _, _ := s.getSettings()
+	if strings.TrimSpace(extIP) != "" {
+		return strings.TrimSpace(extIP), "config"
+	}
+
+	ip, ok := s.fetchExternalIP()
+	if ok {
+		return ip, "auto"
+	}
+	return "", "unset"
+}
+
+func (s *Server) fetchExternalIP() (string, bool) {
+	s.autoExternalIPMu.Lock()
+	defer s.autoExternalIPMu.Unlock()
+
+	if s.autoExternalIP != "" && time.Since(s.autoExternalIPAt) < 10*time.Minute {
+		return s.autoExternalIP, true
+	}
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	req, err := http.NewRequest(http.MethodGet, "https://api.ipify.org?format=text", nil)
+	if err != nil {
+		return "", false
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", false
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", false
+	}
+	ip := strings.TrimSpace(string(body))
+	if net.ParseIP(ip) == nil {
+		return "", false
+	}
+
+	s.autoExternalIP = ip
+	s.autoExternalIPAt = time.Now()
+	return ip, true
+}
+
+func splitListenHostPort(value string) (string, string) {
+	host, port, err := net.SplitHostPort(strings.TrimSpace(value))
+	if err == nil {
+		return host, port
+	}
+	return strings.TrimSpace(value), ""
+}
+
+func isLoopbackOrWildcard(host string) bool {
+	if host == "" {
+		return true
+	}
+	if host == "localhost" {
+		return true
+	}
+	if host == "0.0.0.0" || host == "::" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback() || ip.IsUnspecified()
+	}
+	return false
+}
+
+func requestScheme(r *http.Request) string {
+	if r.Header.Get("X-Forwarded-Proto") != "" {
+		return r.Header.Get("X-Forwarded-Proto")
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
 }
 
 // handleSettings handles GET/PUT for dynamic settings (external_ip, probe_target, skip_cert_verify).
