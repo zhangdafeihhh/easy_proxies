@@ -3,6 +3,8 @@ easy-proxies
 easy-proxies-*
 easy_proxies
 easy_proxies-*
+!cmd/easy_proxies/
+!cmd/easy_proxies/**
 *.exe
 
 # Configuration (contains sensitive data)
