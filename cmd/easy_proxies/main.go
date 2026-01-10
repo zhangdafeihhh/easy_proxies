@@ -4,8 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net"
+	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"easy_proxies/internal/app"
 	"easy_proxies/internal/config"
@@ -28,6 +33,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("load config: %v", err)
 	}
+
+	logSubscriptionURL(cfg)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -133,4 +140,79 @@ func logStartupHints(path string) {
 	log.Printf("using config: %s", path)
 	log.Printf("quick start: edit nodes in %s or set subscriptions/nodes_file", path)
 	log.Printf("defaults: listener port 60009, password Admin@123..")
+}
+
+func logSubscriptionURL(cfg *config.Config) {
+	if cfg == nil || !cfg.ManagementEnabled() {
+		return
+	}
+
+	host, port := splitListenHostPort(cfg.Management.Listen)
+	if port == "" {
+		port = "9090"
+	}
+
+	exportHost := host
+	if isLoopbackOrWildcard(host) {
+		exportHost = strings.TrimSpace(cfg.ExternalIP)
+		if exportHost == "" {
+			if autoIP := fetchExternalIP(); autoIP != "" {
+				exportHost = autoIP
+			}
+		}
+	}
+
+	if exportHost == "" {
+		log.Printf("subscription url: unavailable (set external_ip in config or web settings)")
+		return
+	}
+
+	log.Printf("subscription url: http://%s:%s/api/export", exportHost, port)
+}
+
+func fetchExternalIP() string {
+	client := &http.Client{Timeout: 3 * time.Second}
+	req, err := http.NewRequest(http.MethodGet, "https://api.ipify.org?format=text", nil)
+	if err != nil {
+		return ""
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+	ip := strings.TrimSpace(string(body))
+	if net.ParseIP(ip) == nil {
+		return ""
+	}
+	return ip
+}
+
+func splitListenHostPort(value string) (string, string) {
+	host, port, err := net.SplitHostPort(strings.TrimSpace(value))
+	if err == nil {
+		return host, port
+	}
+	return strings.TrimSpace(value), ""
+}
+
+func isLoopbackOrWildcard(host string) bool {
+	if host == "" || host == "localhost" {
+		return true
+	}
+	if host == "0.0.0.0" || host == "::" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback() || ip.IsUnspecified()
+	}
+	return false
 }
