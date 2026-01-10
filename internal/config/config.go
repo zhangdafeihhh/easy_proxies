@@ -949,7 +949,7 @@ func (c *Config) Save() error {
 	return c.SaveNodes()
 }
 
-// SaveSettings persists only config settings (external_ip, probe_target, skip_cert_verify)
+// SaveSettings persists config settings (external_ip, probe_target, skip_cert_verify, nodes_file, subscriptions)
 // without touching nodes.txt. Use this for settings API updates.
 func (c *Config) SaveSettings() error {
 	if c == nil {
@@ -971,6 +971,8 @@ func (c *Config) SaveSettings() error {
 	saveCfg.ExternalIP = c.ExternalIP
 	saveCfg.Management.ProbeTarget = c.Management.ProbeTarget
 	saveCfg.SkipCertVerify = c.SkipCertVerify
+	saveCfg.NodesFile = c.NodesFile
+	saveCfg.Subscriptions = append([]string(nil), c.Subscriptions...)
 
 	newData, err := yaml.Marshal(&saveCfg)
 	if err != nil {

@@ -1138,6 +1138,16 @@
           <p class="form-help">导出节点时用于替换 0.0.0.0，留空则使用默认地址</p>
         </div>
         <div class="form-group">
+          <label class="form-label" for="settingNodesFile">节点文件</label>
+          <input type="text" id="settingNodesFile" class="form-input" placeholder="例如：nodes.txt" />
+          <p class="form-help">手动添加的节点会保存到该文件，留空则保存到配置文件</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="settingSubscriptions">订阅地址（每行一个）</label>
+          <textarea id="settingSubscriptions" class="form-input" rows="4" placeholder="https://example.com/subscription"></textarea>
+          <p class="form-help">保存后下次启动加载，或手动重载</p>
+        </div>
+        <div class="form-group">
           <label class="form-label" for="settingProbeTarget">探测目标</label>
           <input type="text" id="settingProbeTarget" class="form-input" placeholder="例如：www.apple.com:80" />
           <p class="form-help">健康检查时使用的目标地址，格式：host:port</p>
@@ -1832,6 +1842,8 @@
         .then(res => res.ok ? res.json() : {})
         .then(data => {
           document.getElementById('settingExternalIP').value = data.external_ip || '';
+          document.getElementById('settingNodesFile').value = data.nodes_file || '';
+          document.getElementById('settingSubscriptions').value = (data.subscriptions || []).join('\n');
           document.getElementById('settingProbeTarget').value = data.probe_target || '';
           document.getElementById('settingSkipCertVerify').checked = data.skip_cert_verify || false;
           document.getElementById('settingsError').classList.remove('show');
@@ -1854,6 +1866,11 @@
 
       const payload = {
         external_ip: document.getElementById('settingExternalIP').value.trim(),
+        nodes_file: document.getElementById('settingNodesFile').value.trim(),
+        subscriptions: document.getElementById('settingSubscriptions').value
+          .split('\n')
+          .map(line => line.trim())
+          .filter(line => line.length > 0),
         probe_target: document.getElementById('settingProbeTarget').value.trim(),
         skip_cert_verify: document.getElementById('settingSkipCertVerify').checked
       };

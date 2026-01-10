@@ -58,6 +58,7 @@ listener:
   port: 60009
   username: "admin"
   password: "Admin@123.."
+nodes_file: "nodes.txt"
 nodes:
   - name: "local-placeholder"
     uri: "vless://00000000-0000-0000-0000-000000000000@127.0.0.1:1"
@@ -88,18 +89,23 @@ func ensurePlaceholders(path string) error {
 	nodesEmpty := isEmptySlice(doc["nodes"])
 	subsEmpty := isEmptySlice(doc["subscriptions"])
 	nodesFileEmpty := isEmptyString(doc["nodes_file"])
+	changed := false
 
-	if !(nodesEmpty && subsEmpty && nodesFileEmpty) {
+	if nodesEmpty && subsEmpty && nodesFileEmpty {
+		doc["nodes_file"] = "nodes.txt"
+		doc["nodes"] = []any{
+			map[string]any{
+				"name": "local-placeholder",
+				"uri":  "vless://00000000-0000-0000-0000-000000000000@127.0.0.1:1",
+			},
+		}
+		doc["subscriptions"] = []any{"https://example.com/subscription"}
+		changed = true
+	}
+
+	if !changed {
 		return nil
 	}
-
-	doc["nodes"] = []any{
-		map[string]any{
-			"name": "local-placeholder",
-			"uri":  "vless://00000000-0000-0000-0000-000000000000@127.0.0.1:1",
-		},
-	}
-	doc["subscriptions"] = []any{"https://example.com/subscription"}
 
 	newData, err := yaml.Marshal(doc)
 	if err != nil {
