@@ -47,6 +47,9 @@ listener:
   port: 60009
   username: "admin"
   password: "Admin@123.."
+nodes:
+  - name: "local-placeholder"
+    uri: "vless://00000000-0000-0000-0000-000000000000@127.0.0.1:1"
 management:
   listen: "127.0.0.1:9090"
   password: "Admin@123.."
