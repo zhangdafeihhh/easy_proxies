@@ -1,7 +1,9 @@
 package config
 
 import (
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -30,7 +32,8 @@ type Config struct {
 	Subscriptions       []string                  `yaml:"subscriptions"` // 订阅链接列表
 	ExternalIP          string                    `yaml:"external_ip"`   // 外部 IP 地址，用于导出时替换 0.0.0.0
 	LogLevel            string                    `yaml:"log_level"`
-	SkipCertVerify      bool                      `yaml:"skip_cert_verify"` // 全局跳过 SSL 证书验证
+	SkipCertVerify      bool                      `yaml:"skip_cert_verify"`   // 全局跳过 SSL 证书验证
+	SubscriptionToken   string                    `yaml:"subscription_token"` // 订阅导出访问密码
 
 	filePath string `yaml:"-"` // 配置文件路径，用于保存
 }
@@ -168,6 +171,9 @@ func (c *Config) normalize() error {
 	if c.Management.Enabled == nil {
 		defaultEnabled := true
 		c.Management.Enabled = &defaultEnabled
+	}
+	if c.SubscriptionToken == "" {
+		c.SubscriptionToken = generateSubscriptionToken()
 	}
 
 	// Subscription refresh defaults
@@ -973,6 +979,7 @@ func (c *Config) SaveSettings() error {
 	saveCfg.SkipCertVerify = c.SkipCertVerify
 	saveCfg.NodesFile = c.NodesFile
 	saveCfg.Subscriptions = append([]string(nil), c.Subscriptions...)
+	saveCfg.SubscriptionToken = c.SubscriptionToken
 
 	newData, err := yaml.Marshal(&saveCfg)
 	if err != nil {
@@ -993,4 +1000,12 @@ func isPortAvailable(address string, port uint16) bool {
 	}
 	_ = ln.Close()
 	return true
+}
+
+func generateSubscriptionToken() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "subscribe-token"
+	}
+	return hex.EncodeToString(buf)
 }

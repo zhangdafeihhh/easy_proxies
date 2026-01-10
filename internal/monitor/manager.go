@@ -18,14 +18,15 @@ import (
 
 // Config mirrors user settings needed by the monitoring server.
 type Config struct {
-	Enabled        bool
-	Listen         string
-	ProbeTarget    string
-	Password       string
-	ProxyUsername  string // 代理池的用户名（用于导出）
-	ProxyPassword  string // 代理池的密码（用于导出）
-	ExternalIP     string // 外部 IP 地址，用于导出时替换 0.0.0.0
-	SkipCertVerify bool   // 全局跳过 SSL 证书验证
+	Enabled           bool
+	Listen            string
+	ProbeTarget       string
+	Password          string
+	ProxyUsername     string // 代理池的用户名（用于导出）
+	ProxyPassword     string // 代理池的密码（用于导出）
+	ExternalIP        string // 外部 IP 地址，用于导出时替换 0.0.0.0
+	SkipCertVerify    bool   // 全局跳过 SSL 证书验证
+	SubscriptionToken string // 订阅导出访问密码
 }
 
 // NodeInfo is static metadata about a proxy entry.

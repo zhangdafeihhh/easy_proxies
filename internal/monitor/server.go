@@ -98,8 +98,8 @@ func NewServer(cfg Config, mgr *Manager, logger *log.Logger) *Server {
 	mux.HandleFunc("/api/nodes/probe-all", s.withAuth(s.handleProbeAll))
 	mux.HandleFunc("/api/nodes/", s.withAuth(s.handleNodeAction))
 	mux.HandleFunc("/api/debug", s.withAuth(s.handleDebug))
-	mux.HandleFunc("/api/export", s.withAuth(s.handleExport))
-	mux.HandleFunc("/api/export/url", s.withAuth(s.handleExportURL))
+	mux.HandleFunc("/api/export", s.withExportAuth(s.handleExport))
+	mux.HandleFunc("/api/export/url", s.withExportAuth(s.handleExportURL))
 	mux.HandleFunc("/api/subscription/status", s.withAuth(s.handleSubscriptionStatus))
 	mux.HandleFunc("/api/subscription/refresh", s.withAuth(s.handleSubscriptionRefresh))
 	mux.HandleFunc("/api/reload", s.withAuth(s.handleReload))
@@ -133,28 +133,31 @@ func (s *Server) SetConfig(cfg *config.Config) {
 		s.cfg.ExternalIP = cfg.ExternalIP
 		s.cfg.ProbeTarget = cfg.Management.ProbeTarget
 		s.cfg.SkipCertVerify = cfg.SkipCertVerify
+		s.cfg.SubscriptionToken = cfg.SubscriptionToken
 	}
 }
 
 // getSettings returns current dynamic settings (thread-safe).
-func (s *Server) getSettings() (externalIP, probeTarget string, skipCertVerify bool, nodesFile string, subscriptions []string) {
+func (s *Server) getSettings() (externalIP, probeTarget string, skipCertVerify bool, nodesFile string, subscriptions []string, subscriptionToken string) {
 	s.cfgMu.RLock()
 	defer s.cfgMu.RUnlock()
 	if s.cfgSrc != nil {
 		subscriptions = append([]string(nil), s.cfgSrc.Subscriptions...)
 		nodesFile = s.cfgSrc.NodesFile
+		subscriptionToken = s.cfgSrc.SubscriptionToken
 	}
-	return s.cfg.ExternalIP, s.cfg.ProbeTarget, s.cfg.SkipCertVerify, nodesFile, subscriptions
+	return s.cfg.ExternalIP, s.cfg.ProbeTarget, s.cfg.SkipCertVerify, nodesFile, subscriptions, subscriptionToken
 }
 
 // updateSettings updates dynamic settings and persists to config file.
-func (s *Server) updateSettings(externalIP, probeTarget string, skipCertVerify bool, nodesFile string, subscriptions []string) error {
+func (s *Server) updateSettings(externalIP, probeTarget string, skipCertVerify bool, nodesFile string, subscriptions []string, subscriptionToken string) error {
 	s.cfgMu.Lock()
 	defer s.cfgMu.Unlock()
 
 	s.cfg.ExternalIP = externalIP
 	s.cfg.ProbeTarget = probeTarget
 	s.cfg.SkipCertVerify = skipCertVerify
+	s.cfg.SubscriptionToken = subscriptionToken
 
 	if s.cfgSrc == nil {
 		return errors.New("配置存储未初始化")
@@ -165,6 +168,7 @@ func (s *Server) updateSettings(externalIP, probeTarget string, skipCertVerify b
 	s.cfgSrc.SkipCertVerify = skipCertVerify
 	s.cfgSrc.NodesFile = nodesFile
 	s.cfgSrc.Subscriptions = append([]string(nil), subscriptions...)
+	s.cfgSrc.SubscriptionToken = subscriptionToken
 
 	if err := s.cfgSrc.SaveSettings(); err != nil {
 		return fmt.Errorf("保存配置失败: %w", err)
@@ -420,27 +424,57 @@ func (s *Server) withAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		// 检查 Cookie 中的 session token
-		cookie, err := r.Cookie("session_token")
-		if err == nil && cookie.Value == s.sessionToken {
+		if s.isSessionAuthorized(r) {
 			next(w, r)
 			return
-		}
-
-		// 检查 Authorization header (Bearer token)
-		authHeader := r.Header.Get("Authorization")
-		if authHeader != "" {
-			token := strings.TrimPrefix(authHeader, "Bearer ")
-			if token == s.sessionToken {
-				next(w, r)
-				return
-			}
 		}
 
 		// 未授权
 		w.WriteHeader(http.StatusUnauthorized)
 		writeJSON(w, map[string]any{"error": "未授权，请先登录"})
 	}
+}
+
+func (s *Server) withExportAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := r.URL.Query().Get("password")
+		if s.cfg.SubscriptionToken != "" {
+			if token != "" && token == s.cfg.SubscriptionToken {
+				next(w, r)
+				return
+			}
+			if s.isSessionAuthorized(r) {
+				next(w, r)
+				return
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+			writeJSON(w, map[string]any{"error": "未授权，请提供订阅密码或先登录"})
+			return
+		}
+
+		if s.cfg.Password == "" || s.isSessionAuthorized(r) {
+			next(w, r)
+			return
+		}
+
+		w.WriteHeader(http.StatusUnauthorized)
+		writeJSON(w, map[string]any{"error": "未授权，请先登录"})
+	}
+}
+
+func (s *Server) isSessionAuthorized(r *http.Request) bool {
+	cookie, err := r.Cookie("session_token")
+	if err == nil && cookie.Value == s.sessionToken {
+		return true
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" {
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if token == s.sessionToken {
+			return true
+		}
+	}
+	return false
 }
 
 // handleAuth 处理登录认证
@@ -511,7 +545,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		// 在 pool 模式下，所有节点共享同一端口，也正常导出
 		listenAddr := snap.ListenAddress
 		if listenAddr == "0.0.0.0" || listenAddr == "::" {
-			if extIP, _, _, _, _ := s.getSettings(); extIP != "" {
+			if extIP, _, _, _, _, _ := s.getSettings(); extIP != "" {
 				listenAddr = extIP
 			}
 		}
@@ -568,12 +602,12 @@ func (s *Server) handleExportURL(w http.ResponseWriter, r *http.Request) {
 		"external_ip":   externalIP,
 		"ip_source":     ipSource,
 		"warning":       warning,
-		"auth_required": s.cfg.Password != "",
+		"auth_required": s.cfg.Password != "" || s.cfg.SubscriptionToken != "",
 	})
 }
 
 func (s *Server) resolveExternalIP() (string, string) {
-	extIP, _, _, _, _ := s.getSettings()
+	extIP, _, _, _, _, _ := s.getSettings()
 	if strings.TrimSpace(extIP) != "" {
 		return strings.TrimSpace(extIP), "config"
 	}
@@ -673,21 +707,23 @@ func trimStringSlice(values []string) []string {
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		extIP, probeTarget, skipCertVerify, nodesFile, subscriptions := s.getSettings()
+		extIP, probeTarget, skipCertVerify, nodesFile, subscriptions, subscriptionToken := s.getSettings()
 		writeJSON(w, map[string]any{
-			"external_ip":      extIP,
-			"probe_target":     probeTarget,
-			"skip_cert_verify": skipCertVerify,
-			"nodes_file":       nodesFile,
-			"subscriptions":    subscriptions,
+			"external_ip":        extIP,
+			"probe_target":       probeTarget,
+			"skip_cert_verify":   skipCertVerify,
+			"nodes_file":         nodesFile,
+			"subscriptions":      subscriptions,
+			"subscription_token": subscriptionToken,
 		})
 	case http.MethodPut:
 		var req struct {
-			ExternalIP     string   `json:"external_ip"`
-			ProbeTarget    string   `json:"probe_target"`
-			SkipCertVerify bool     `json:"skip_cert_verify"`
-			NodesFile      string   `json:"nodes_file"`
-			Subscriptions  []string `json:"subscriptions"`
+			ExternalIP        string   `json:"external_ip"`
+			ProbeTarget       string   `json:"probe_target"`
+			SkipCertVerify    bool     `json:"skip_cert_verify"`
+			NodesFile         string   `json:"nodes_file"`
+			Subscriptions     []string `json:"subscriptions"`
+			SubscriptionToken string   `json:"subscription_token"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -699,21 +735,23 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		probeTarget := strings.TrimSpace(req.ProbeTarget)
 		nodesFile := strings.TrimSpace(req.NodesFile)
 		subscriptions := trimStringSlice(req.Subscriptions)
+		subscriptionToken := strings.TrimSpace(req.SubscriptionToken)
 
-		if err := s.updateSettings(extIP, probeTarget, req.SkipCertVerify, nodesFile, subscriptions); err != nil {
+		if err := s.updateSettings(extIP, probeTarget, req.SkipCertVerify, nodesFile, subscriptions, subscriptionToken); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			writeJSON(w, map[string]any{"error": err.Error()})
 			return
 		}
 
 		writeJSON(w, map[string]any{
-			"message":          "设置已保存",
-			"external_ip":      extIP,
-			"probe_target":     probeTarget,
-			"skip_cert_verify": req.SkipCertVerify,
-			"nodes_file":       nodesFile,
-			"subscriptions":    subscriptions,
-			"need_reload":      true,
+			"message":            "设置已保存",
+			"external_ip":        extIP,
+			"probe_target":       probeTarget,
+			"skip_cert_verify":   req.SkipCertVerify,
+			"nodes_file":         nodesFile,
+			"subscriptions":      subscriptions,
+			"subscription_token": subscriptionToken,
+			"need_reload":        true,
 		})
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)

@@ -1148,6 +1148,11 @@
           <p class="form-help">保存后下次启动加载，或手动重载</p>
         </div>
         <div class="form-group">
+          <label class="form-label" for="settingSubscriptionToken">订阅访问密码</label>
+          <input type="text" id="settingSubscriptionToken" class="form-input" placeholder="自动生成，可自行修改" />
+          <p class="form-help">CLI 订阅使用 ?password=xxx 访问 /api/export</p>
+        </div>
+        <div class="form-group">
           <label class="form-label" for="settingProbeTarget">探测目标</label>
           <input type="text" id="settingProbeTarget" class="form-input" placeholder="例如：www.apple.com:80" />
           <p class="form-help">健康检查时使用的目标地址，格式：host:port</p>
@@ -1307,7 +1312,7 @@
         }
 
         if (data.auth_required) {
-          hint.textContent = '管理密码已启用，订阅接口需先登录获取 Cookie';
+          hint.textContent = '订阅接口需使用 ?password=订阅密码 或先登录';
           hint.style.color = 'var(--text-secondary)';
           return;
         }
@@ -1844,6 +1849,7 @@
           document.getElementById('settingExternalIP').value = data.external_ip || '';
           document.getElementById('settingNodesFile').value = data.nodes_file || '';
           document.getElementById('settingSubscriptions').value = (data.subscriptions || []).join('\n');
+          document.getElementById('settingSubscriptionToken').value = data.subscription_token || '';
           document.getElementById('settingProbeTarget').value = data.probe_target || '';
           document.getElementById('settingSkipCertVerify').checked = data.skip_cert_verify || false;
           document.getElementById('settingsError').classList.remove('show');
@@ -1871,6 +1877,7 @@
           .split('\n')
           .map(line => line.trim())
           .filter(line => line.length > 0),
+        subscription_token: document.getElementById('settingSubscriptionToken').value.trim(),
         probe_target: document.getElementById('settingProbeTarget').value.trim(),
         skip_cert_verify: document.getElementById('settingSkipCertVerify').checked
       };

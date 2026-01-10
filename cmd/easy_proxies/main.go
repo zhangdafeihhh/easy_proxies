@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
@@ -47,11 +49,15 @@ func main() {
 
 func ensureDefaultConfig(path string) error {
 	if _, err := os.Stat(path); err == nil {
-		return ensurePlaceholders(path)
+		if err := ensurePlaceholders(path); err != nil {
+			return err
+		}
+		return ensureSubscriptionToken(path)
 	} else if !os.IsNotExist(err) {
 		return err
 	}
 
+	subToken := generateSubscriptionToken()
 	defaultConfig := `mode: pool
 listener:
   address: "0.0.0.0"
@@ -64,6 +70,7 @@ nodes:
     uri: "vless://00000000-0000-0000-0000-000000000000@127.0.0.1:1"
 subscriptions:
   - "https://example.com/subscription"
+subscription_token: "` + subToken + `"
 management:
   listen: "127.0.0.1:9090"
   password: "Admin@123.."
@@ -115,6 +122,39 @@ func ensurePlaceholders(path string) error {
 		return err
 	}
 	log.Printf("config had no nodes/subscriptions; wrote placeholders to %s", path)
+	return nil
+}
+
+func ensureSubscriptionToken(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	var doc map[string]any
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return err
+	}
+
+	token := ""
+	if raw, ok := doc["subscription_token"]; ok {
+		if s, ok := raw.(string); ok {
+			token = strings.TrimSpace(s)
+		}
+	}
+	if token != "" {
+		return nil
+	}
+
+	doc["subscription_token"] = generateSubscriptionToken()
+	newData, err := yaml.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, newData, 0o644); err != nil {
+		return err
+	}
+	log.Printf("subscription token initialized in %s", path)
 	return nil
 }
 
@@ -221,4 +261,12 @@ func isLoopbackOrWildcard(host string) bool {
 		return ip.IsLoopback() || ip.IsUnspecified()
 	}
 	return false
+}
+
+func generateSubscriptionToken() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "subscribe-token"
+	}
+	return hex.EncodeToString(buf)
 }
