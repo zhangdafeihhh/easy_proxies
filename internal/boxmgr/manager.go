@@ -424,6 +424,9 @@ func (m *Manager) ensureMonitor(ctx context.Context) error {
 			serverToStart = monitor.NewServer(m.monitorCfg, monitorMgr, log.Default())
 			m.monitorServer = serverToStart
 		}
+		if m.monitorServer != nil {
+			m.monitorServer.SetConfig(m.cfg)
+		}
 		// Set NodeManager for config CRUD endpoints
 		if m.monitorServer != nil {
 			m.monitorServer.SetNodeManager(m)
