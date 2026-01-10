@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"embed"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -18,6 +19,8 @@ import (
 	"time"
 
 	"easy_proxies/internal/config"
+
+	"gopkg.in/yaml.v3"
 )
 
 //go:embed assets/index.html
@@ -99,6 +102,8 @@ func NewServer(cfg Config, mgr *Manager, logger *log.Logger) *Server {
 	mux.HandleFunc("/api/nodes/", s.withAuth(s.handleNodeAction))
 	mux.HandleFunc("/api/debug", s.withAuth(s.handleDebug))
 	mux.HandleFunc("/api/export", s.withExportAuth(s.handleExport))
+	mux.HandleFunc("/api/export/v2ray", s.withExportAuth(s.handleExportV2Ray))
+	mux.HandleFunc("/api/export/clash", s.withExportAuth(s.handleExportClash))
 	mux.HandleFunc("/api/export/url", s.withExportAuth(s.handleExportURL))
 	mux.HandleFunc("/api/subscription/status", s.withAuth(s.handleSubscriptionStatus))
 	mux.HandleFunc("/api/subscription/refresh", s.withAuth(s.handleSubscriptionRefresh))
@@ -567,6 +572,110 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(strings.Join(lines, "\n")))
 }
 
+// handleExportV2Ray exports upstream node URIs as a base64-encoded subscription.
+func (s *Server) handleExportV2Ray(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	snapshots := s.mgr.SnapshotFiltered(true)
+	lines := make([]string, 0, len(snapshots))
+	seen := make(map[string]struct{})
+	for _, snap := range snapshots {
+		uri := strings.TrimSpace(snap.URI)
+		if uri == "" {
+			continue
+		}
+		if _, ok := seen[uri]; ok {
+			continue
+		}
+		seen[uri] = struct{}{}
+		lines = append(lines, uri)
+	}
+
+	payload := strings.Join(lines, "\n")
+	encoded := base64.StdEncoding.EncodeToString([]byte(payload))
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename=subscription.txt")
+	_, _ = w.Write([]byte(encoded))
+}
+
+// handleExportClash exports local HTTP proxies as a Clash-compatible YAML.
+func (s *Server) handleExportClash(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	snapshots := s.mgr.SnapshotFiltered(true)
+	proxies := make([]map[string]any, 0, len(snapshots))
+	names := make([]string, 0, len(snapshots))
+	used := make(map[string]int)
+
+	for _, snap := range snapshots {
+		if snap.ListenAddress == "" || snap.Port == 0 {
+			continue
+		}
+		server := snap.ListenAddress
+		if server == "0.0.0.0" || server == "::" {
+			if extIP, _, _, _, _, _ := s.getSettings(); extIP != "" {
+				server = extIP
+			}
+		}
+
+		name := snap.Name
+		if name == "" {
+			name = snap.Tag
+		}
+		if name == "" {
+			name = fmt.Sprintf("node-%d", len(names)+1)
+		}
+		if count, ok := used[name]; ok {
+			used[name] = count + 1
+			name = fmt.Sprintf("%s-%d", name, count+1)
+		} else {
+			used[name] = 1
+		}
+
+		proxy := map[string]any{
+			"name":   name,
+			"type":   "http",
+			"server": server,
+			"port":   snap.Port,
+		}
+		if s.cfg.ProxyUsername != "" && s.cfg.ProxyPassword != "" {
+			proxy["username"] = s.cfg.ProxyUsername
+			proxy["password"] = s.cfg.ProxyPassword
+		}
+		proxies = append(proxies, proxy)
+		names = append(names, name)
+	}
+
+	doc := map[string]any{
+		"proxies": proxies,
+		"proxy-groups": []map[string]any{
+			{
+				"name":    "easy-proxies",
+				"type":    "select",
+				"proxies": names,
+			},
+		},
+		"rules": []string{"MATCH, easy-proxies"},
+	}
+
+	data, err := yaml.Marshal(doc)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		writeJSON(w, map[string]any{"error": "生成 Clash 配置失败"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-yaml; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename=clash.yaml")
+	_, _ = w.Write(data)
+}
+
 // handleExportURL returns a subscription URL for /api/export with best-effort public IP detection.
 func (s *Server) handleExportURL(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -593,16 +702,30 @@ func (s *Server) handleExportURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	exportURL := ""
+	exportURLV2Ray := ""
+	exportURLClash := ""
 	if host != "" {
-		exportURL = fmt.Sprintf("%s://%s:%s/api/export", scheme, host, port)
+		base := fmt.Sprintf("%s://%s:%s", scheme, host, port)
+		exportURL = base + "/api/export"
+		exportURLV2Ray = base + "/api/export/v2ray"
+		exportURLClash = base + "/api/export/clash"
+		if s.cfg.SubscriptionToken != "" {
+			tokenParam := "password=" + url.QueryEscape(s.cfg.SubscriptionToken)
+			exportURL += "?" + tokenParam
+			exportURLV2Ray += "?" + tokenParam
+			exportURLClash += "?" + tokenParam
+		}
 	}
 
 	writeJSON(w, map[string]any{
-		"export_url":    exportURL,
-		"external_ip":   externalIP,
-		"ip_source":     ipSource,
-		"warning":       warning,
-		"auth_required": s.cfg.Password != "" || s.cfg.SubscriptionToken != "",
+		"export_url":       exportURL,
+		"export_url_v2ray": exportURLV2Ray,
+		"export_url_clash": exportURLClash,
+		"external_ip":      externalIP,
+		"ip_source":        ipSource,
+		"warning":          warning,
+		"auth_required":    s.cfg.Password != "" || s.cfg.SubscriptionToken != "",
+		"token_included":   s.cfg.SubscriptionToken != "",
 	})
 }
 
