@@ -198,6 +198,12 @@
       margin-top: 10px;
     }
 
+    .export-label {
+      min-width: 110px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
     .export-url .form-input {
       margin: 0;
       padding: 10px 12px;
@@ -978,14 +984,17 @@
       <div class="stat-card" id="exportUrlCard">
         <div class="stat-label">订阅地址</div>
         <div class="export-url">
+          <div class="export-label">HTTP 代理订阅</div>
           <input class="form-input" id="exportUrlInput" placeholder="HTTP 订阅地址" readonly />
           <button class="btn btn-secondary btn-sm" onclick="copyExportUrl('exportUrlInput')">复制</button>
         </div>
         <div class="export-url">
+          <div class="export-label">V2Ray 订阅</div>
           <input class="form-input" id="exportUrlV2RayInput" placeholder="V2Ray 订阅地址" readonly />
           <button class="btn btn-secondary btn-sm" onclick="copyExportUrl('exportUrlV2RayInput')">复制</button>
         </div>
         <div class="export-url">
+          <div class="export-label">Clash 订阅</div>
           <input class="form-input" id="exportUrlClashInput" placeholder="Clash 订阅地址" readonly />
           <button class="btn btn-secondary btn-sm" onclick="copyExportUrl('exportUrlClashInput')">复制</button>
         </div>
@@ -1350,10 +1359,23 @@
         return;
       }
       try {
-        await navigator.clipboard.writeText(input.value);
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(input.value);
+        } else {
+          input.focus();
+          input.select();
+          document.execCommand('copy');
+        }
         showToast('订阅地址已复制', 'success');
       } catch (err) {
-        showToast('复制失败，请手动复制', 'error');
+        try {
+          input.focus();
+          input.select();
+          document.execCommand('copy');
+          showToast('订阅地址已复制', 'success');
+        } catch (fallbackErr) {
+          showToast('复制失败，请手动复制', 'error');
+        }
       }
     }
 
