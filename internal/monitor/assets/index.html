@@ -193,10 +193,14 @@
 
     .export-url {
       display: grid;
-      grid-template-columns: 110px 1fr auto auto;
+      grid-template-columns: 130px 1fr auto auto;
       gap: 10px;
       align-items: center;
       margin-top: 10px;
+    }
+
+    #exportUrlCard {
+      grid-column: span 2;
     }
 
     .export-label {
@@ -535,9 +539,9 @@
     }
 
     .settings-modal {
-      max-width: 210px;
-      padding: 24px;
-      max-height: 80vh;
+      max-width: 320px;
+      padding: 28px;
+      max-height: 85vh;
       overflow-y: auto;
       font-size: 12px;
     }
@@ -548,6 +552,7 @@
     .settings-modal .form-help { font-size: 10px; }
     .settings-modal .form-input { font-size: 12px; }
     .settings-modal .btn { font-size: 12px; padding: 10px 16px; }
+    .settings-modal .modal-buttons .btn { white-space: nowrap; }
 
     @keyframes slideUp {
       from {
@@ -910,6 +915,7 @@
       .header h1 { font-size: 36px; }
       .header p { font-size: 17px; }
       .stats { grid-template-columns: repeat(2, 1fr); }
+      #exportUrlCard { grid-column: span 1; }
       .metrics { grid-template-columns: repeat(2, 1fr); }
       .controls { flex-direction: column; }
       .btn { width: 100%; justify-content: center; }
