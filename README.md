@@ -6,7 +6,7 @@ A proxy node pool management tool based on [sing-box](https://github.com/SagerNe
 
 ## Features
 
-- **Multi-Protocol Support**: VMess, VLESS, Hysteria2, Shadowsocks, Trojan
+- **Multi-Protocol Support**: VMess, VLESS, Hysteria2, Shadowsocks, Trojan, SOCKS5
 - **Multiple Transports**: TCP, WebSocket, HTTP/2, gRPC, HTTPUpgrade
 - **Subscription Support**: Auto-fetch nodes from subscription links (Base64, Clash YAML, etc.)
 - **Subscription Auto-Refresh**: Automatic periodic refresh with WebUI manual trigger (⚠️ causes connection interruption)
@@ -262,6 +262,12 @@ trojan://password@server:443?sni=example.com#TrojanNode
 vmess://base64...#VMessNode
 ```
 
+SOCKS5 legacy format is also supported:
+
+```
+142.111.48.253:7030:username:password
+```
+
 **Method 3: Direct in Config**
 
 ```yaml
@@ -283,6 +289,7 @@ nodes:
 | Hysteria2 | `hysteria2://` | Bandwidth control, obfuscation |
 | Shadowsocks | `ss://` | Multiple ciphers |
 | Trojan | `trojan://` | TLS, multiple transports |
+| SOCKS5 | `socks5://` | Username/password auth |
 
 ### VMess Parameters
 

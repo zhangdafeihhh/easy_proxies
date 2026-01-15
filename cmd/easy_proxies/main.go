@@ -23,6 +23,16 @@ import (
 func main() {
 	var configPath string
 	flag.StringVar(&configPath, "config", "config.yaml", "path to config file")
+	flag.Usage = func() {
+		out := flag.CommandLine.Output()
+		fmt.Fprintf(out, "Usage: %s [options]\n\n", os.Args[0])
+		flag.PrintDefaults()
+		fmt.Fprintln(out, "")
+		fmt.Fprintln(out, "Nodes:")
+		fmt.Fprintln(out, "  Supports standard URIs: vless://, vmess://, trojan://, ss://, hysteria2://, socks5://")
+		fmt.Fprintln(out, "  SOCKS5 legacy format: host:port:username:password")
+		fmt.Fprintln(out, "  Legacy format works in nodes.txt and plain-text subscriptions.")
+	}
 	flag.Parse()
 
 	if err := ensureDefaultConfig(configPath); err != nil {

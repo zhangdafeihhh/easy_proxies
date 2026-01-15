@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -512,15 +513,26 @@ func parseNodesFromContent(content string) ([]config.NodeConfig, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		if isProxyURI(line) {
-			nodes = append(nodes, config.NodeConfig{URI: line})
+
+		candidate := trimNodeToken(line)
+		if candidate == "" {
+			continue
+		}
+
+		if isProxyURI(candidate) {
+			nodes = append(nodes, config.NodeConfig{URI: candidate})
+			continue
+		}
+
+		if uri, ok := parseSocks5LegacyLine(candidate); ok {
+			nodes = append(nodes, config.NodeConfig{URI: uri})
 		}
 	}
 	return nodes, nil
 }
 
 func isProxyURI(s string) bool {
-	schemes := []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://", "hysteria://", "hysteria2://", "hy2://"}
+	schemes := []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://", "hysteria://", "hysteria2://", "hy2://", "socks://", "socks5://"}
 	lower := strings.ToLower(s)
 	for _, scheme := range schemes {
 		if strings.HasPrefix(lower, scheme) {
@@ -528,6 +540,39 @@ func isProxyURI(s string) bool {
 		}
 	}
 	return false
+}
+
+func trimNodeToken(line string) string {
+	token := strings.TrimSpace(line)
+	if token == "" {
+		return ""
+	}
+	if idx := strings.IndexAny(token, " \t,"); idx >= 0 {
+		token = token[:idx]
+	}
+	return strings.TrimSpace(token)
+}
+
+func parseSocks5LegacyLine(line string) (string, bool) {
+	parts := strings.Split(line, ":")
+	if len(parts) != 4 {
+		return "", false
+	}
+	host := strings.TrimSpace(parts[0])
+	if host == "" {
+		return "", false
+	}
+	port, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil || port <= 0 || port > 65535 {
+		return "", false
+	}
+	username := strings.TrimSpace(parts[2])
+	password := strings.TrimSpace(parts[3])
+	if username == "" || password == "" {
+		return "", false
+	}
+	userInfo := url.UserPassword(username, password).String()
+	return fmt.Sprintf("socks5://%s@%s:%d", userInfo, host, port), true
 }
 
 type defaultLogger struct{}

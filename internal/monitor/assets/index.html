@@ -534,6 +534,21 @@
       animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
+    .settings-modal {
+      max-width: 210px;
+      padding: 24px;
+      max-height: 80vh;
+      overflow-y: auto;
+      font-size: 12px;
+    }
+
+    .settings-modal .login-header h2 { font-size: 20px; }
+    .settings-modal .login-header p { font-size: 12px; }
+    .settings-modal .form-label { font-size: 12px; }
+    .settings-modal .form-help { font-size: 10px; }
+    .settings-modal .form-input { font-size: 12px; }
+    .settings-modal .btn { font-size: 12px; padding: 10px 16px; }
+
     @keyframes slideUp {
       from {
         transform: translateY(40px);
@@ -607,6 +622,7 @@
       font-size: 13px;
       margin-top: -12px;
       display: none;
+      white-space: pre-line;
     }
 
     .login-error.show { display: block; }
@@ -1030,6 +1046,12 @@
           </svg>
           添加节点
         </button>
+        <button class="btn btn-secondary" onclick="showBatchImportModal()">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M3 4h10M3 8h10M3 12h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          批量导入
+        </button>
         <button class="btn btn-warning" onclick="triggerReload()" id="reloadBtn">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M13.65 2.35A7.958 7.958 0 0 0 8 0C3.58 0 0 3.58 0 8s3.58 8 8 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L9 7h7V0l-2.35 2.35z" fill="currentColor"/>
@@ -1127,7 +1149,7 @@
         </div>
         <div class="form-group">
           <label class="form-label" for="nodeUri">节点 URI <span style="color: var(--error);">*</span></label>
-          <input type="text" id="nodeUri" class="form-input" placeholder="vless://... 或 vmess://..." required />
+          <input type="text" id="nodeUri" class="form-input" placeholder="vless://... 或 vmess://... 或 socks5://..." required />
         </div>
         <div class="form-group">
           <label class="form-label" for="nodePort">端口 (可选，Multi-Port 模式自动分配)</label>
@@ -1143,9 +1165,31 @@
     </div>
   </div>
 
+  <!-- 批量导入弹窗 -->
+  <div id="batchImportOverlay" class="login-overlay">
+    <div class="login-modal">
+      <div class="login-header">
+        <h2>📥 批量导入</h2>
+        <p>每行一个节点，支持 URI 与 SOCKS5 简写</p>
+      </div>
+      <form class="login-form" onsubmit="handleBatchImport(event)">
+        <div class="form-group">
+          <label class="form-label" for="batchImportContent">节点列表</label>
+          <textarea id="batchImportContent" class="form-input" rows="8" placeholder="vless://...&#10;socks5://user:pass@host:1080&#10;142.111.48.253:7030:username:password" required></textarea>
+          <p class="form-help">支持 vless/vmess/trojan/ss/hysteria2/socks5 以及 host:port:username:password</p>
+        </div>
+        <div id="batchImportError" class="login-error"></div>
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" onclick="hideBatchImportModal()">取消</button>
+          <button type="submit" class="btn btn-primary">导入</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- 设置弹窗 -->
   <div id="settingsOverlay" class="login-overlay">
-    <div class="login-modal">
+    <div class="login-modal settings-modal">
       <div class="login-header">
         <h2>⚙️ 系统设置</h2>
         <p>配置全局选项</p>
@@ -2066,6 +2110,16 @@
       document.getElementById('nodeModalOverlay').classList.add('show');
     }
 
+    function showBatchImportModal() {
+      document.getElementById('batchImportContent').value = '';
+      document.getElementById('batchImportError').classList.remove('show');
+      document.getElementById('batchImportOverlay').classList.add('show');
+    }
+
+    function hideBatchImportModal() {
+      document.getElementById('batchImportOverlay').classList.remove('show');
+    }
+
     // 显示编辑节点弹窗
     function showEditNodeModal(name) {
       const node = configNodes.find(n => n.name === name);
@@ -2086,6 +2140,50 @@
     // 隐藏节点弹窗
     function hideNodeModal() {
       document.getElementById('nodeModalOverlay').classList.remove('show');
+    }
+
+    async function handleBatchImport(event) {
+      event.preventDefault();
+      const errorEl = document.getElementById('batchImportError');
+      errorEl.classList.remove('show');
+
+      const content = document.getElementById('batchImportContent').value.trim();
+      if (!content) {
+        errorEl.textContent = '内容不能为空';
+        errorEl.classList.add('show');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/nodes/config/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          errorEl.textContent = data.error || '导入失败';
+          errorEl.classList.add('show');
+          return;
+        }
+
+        loadConfigNodes();
+        if (data.failed && data.failed.length > 0) {
+          const details = data.failed.slice(0, 5)
+            .map(item => `${item.uri}: ${item.error}`)
+            .join('\n');
+          errorEl.textContent = `部分失败 (${data.failed.length})：\n${details}`;
+          errorEl.classList.add('show');
+          showToast(data.message || '部分节点导入失败', 'error');
+          return;
+        }
+
+        hideBatchImportModal();
+        showToast(data.message || '批量导入成功', 'success');
+      } catch (err) {
+        errorEl.textContent = '导入失败: ' + err.message;
+        errorEl.classList.add('show');
+      }
     }
 
     // 处理节点表单提交

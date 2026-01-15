@@ -6,7 +6,7 @@
 
 ## 特性
 
-- **多协议支持**: VMess、VLESS、Hysteria2、Shadowsocks、Trojan
+- **多协议支持**: VMess、VLESS、Hysteria2、Shadowsocks、Trojan、SOCKS5
 - **多种传输层**: TCP、WebSocket、HTTP/2、gRPC、HTTPUpgrade
 - **订阅链接支持**: 自动从订阅链接获取节点，支持 Base64、Clash YAML 等格式
 - **订阅定时刷新**: 自动定时刷新订阅，支持 WebUI 手动触发（⚠️ 刷新会导致连接中断）
@@ -263,6 +263,12 @@ trojan://password@server:443?sni=example.com#Trojan节点
 vmess://base64...#VMess节点
 ```
 
+也支持 SOCKS5 的简写格式：
+
+```
+142.111.48.253:7030:username:password
+```
+
 **方式 3: 直接在配置文件中**
 
 ```yaml
@@ -284,6 +290,7 @@ nodes:
 | Hysteria2 | `hysteria2://` | 带宽控制、混淆 |
 | Shadowsocks | `ss://` | 多加密方式 |
 | Trojan | `trojan://` | TLS、多传输层 |
+| SOCKS5 | `socks5://` | 用户名/密码认证 |
 
 ### VMess 参数
 

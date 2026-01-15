@@ -233,6 +233,12 @@ func buildNodeOutbound(tag, rawURI string, skipCertVerify bool) (option.Outbound
 			return option.Outbound{}, err
 		}
 		return option.Outbound{Type: C.TypeShadowsocks, Tag: tag, Options: &opts}, nil
+	case "socks", "socks5":
+		opts, err := buildSocksOptions(parsed)
+		if err != nil {
+			return option.Outbound{}, err
+		}
+		return option.Outbound{Type: C.TypeSOCKS, Tag: tag, Options: &opts}, nil
 	case "trojan":
 		opts, err := buildTrojanOptions(parsed, skipCertVerify)
 		if err != nil {
@@ -451,6 +457,30 @@ func buildShadowsocksOptions(u *url.URL) (option.ShadowsocksOutboundOptions, err
 	if plugin := query.Get("plugin"); plugin != "" {
 		opts.Plugin = plugin
 		opts.PluginOptions = query.Get("plugin-opts")
+	}
+
+	return opts, nil
+}
+
+func buildSocksOptions(u *url.URL) (option.SOCKSOutboundOptions, error) {
+	server, port, err := hostPort(u, 1080)
+	if err != nil {
+		return option.SOCKSOutboundOptions{}, err
+	}
+
+	opts := option.SOCKSOutboundOptions{
+		ServerOptions: option.ServerOptions{Server: server, ServerPort: uint16(port)},
+	}
+
+	if u.User != nil {
+		opts.Username = u.User.Username()
+		if password, ok := u.User.Password(); ok {
+			opts.Password = password
+		}
+	}
+
+	if opts.Username != "" || opts.Password != "" || strings.EqualFold(u.Scheme, "socks5") {
+		opts.Version = "5"
 	}
 
 	return opts, nil

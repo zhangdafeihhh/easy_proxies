@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -578,15 +579,32 @@ func parseNodesFromContent(content string) ([]NodeConfig, error) {
 			continue
 		}
 
+		candidate := trimNodeToken(line)
+		if candidate == "" {
+			continue
+		}
+
 		// Check if it's a valid proxy URI
-		if isProxyURI(line) {
+		if isProxyURI(candidate) {
 			nodes = append(nodes, NodeConfig{
-				URI: line,
+				URI: candidate,
+			})
+			continue
+		}
+
+		if uri, ok := parseSocks5LegacyLine(candidate); ok {
+			nodes = append(nodes, NodeConfig{
+				URI: uri,
 			})
 		}
 	}
 
 	return nodes, nil
+}
+
+// ParseNodesFromContent parses nodes from plain text content.
+func ParseNodesFromContent(content string) ([]NodeConfig, error) {
+	return parseNodesFromContent(content)
 }
 
 // isBase64 checks if a string looks like base64 encoded content
@@ -617,13 +635,46 @@ func isBase64(s string) bool {
 
 // isProxyURI checks if a string is a valid proxy URI
 func isProxyURI(s string) bool {
-	schemes := []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://", "hysteria://", "hysteria2://", "hy2://"}
+	schemes := []string{"vmess://", "vless://", "trojan://", "ss://", "ssr://", "hysteria://", "hysteria2://", "hy2://", "socks://", "socks5://"}
 	for _, scheme := range schemes {
 		if strings.HasPrefix(strings.ToLower(s), scheme) {
 			return true
 		}
 	}
 	return false
+}
+
+func trimNodeToken(line string) string {
+	token := strings.TrimSpace(line)
+	if token == "" {
+		return ""
+	}
+	if idx := strings.IndexAny(token, " \t,"); idx >= 0 {
+		token = token[:idx]
+	}
+	return strings.TrimSpace(token)
+}
+
+func parseSocks5LegacyLine(line string) (string, bool) {
+	parts := strings.Split(line, ":")
+	if len(parts) != 4 {
+		return "", false
+	}
+	host := strings.TrimSpace(parts[0])
+	if host == "" {
+		return "", false
+	}
+	port, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil || port <= 0 || port > 65535 {
+		return "", false
+	}
+	username := strings.TrimSpace(parts[2])
+	password := strings.TrimSpace(parts[3])
+	if username == "" || password == "" {
+		return "", false
+	}
+	userInfo := url.UserPassword(username, password).String()
+	return fmt.Sprintf("socks5://%s@%s:%d", userInfo, host, port), true
 }
 
 // clashConfig represents a minimal Clash configuration for parsing proxies
@@ -637,6 +688,7 @@ type clashProxy struct {
 	Server            string                 `yaml:"server"`
 	Port              int                    `yaml:"port"`
 	UUID              string                 `yaml:"uuid"`
+	Username          string                 `yaml:"username"`
 	Password          string                 `yaml:"password"`
 	Cipher            string                 `yaml:"cipher"`
 	AlterId           int                    `yaml:"alterId"`
@@ -703,6 +755,8 @@ func convertClashProxyToURI(p clashProxy) string {
 		return buildShadowsocksURI(p)
 	case "hysteria2", "hy2":
 		return buildHysteria2URI(p)
+	case "socks", "socks5":
+		return buildSocksURI(p)
 	default:
 		return ""
 	}
@@ -845,6 +899,19 @@ func buildHysteria2URI(p clashProxy) string {
 	}
 
 	return fmt.Sprintf("hysteria2://%s@%s:%d%s#%s", p.Password, p.Server, p.Port, query, url.QueryEscape(p.Name))
+}
+
+func buildSocksURI(p clashProxy) string {
+	userInfo := ""
+	if p.Username != "" {
+		if p.Password != "" {
+			userInfo = url.UserPassword(p.Username, p.Password).String()
+		} else {
+			userInfo = url.User(p.Username).String()
+		}
+		userInfo += "@"
+	}
+	return fmt.Sprintf("socks5://%s%s:%d#%s", userInfo, p.Server, p.Port, url.QueryEscape(p.Name))
 }
 
 // FilePath returns the config file path.

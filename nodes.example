@@ -11,6 +11,12 @@ hysteria2://c5f7fbb5-2018-4295-8ff9-340d720c63c9@hinet-tw-01-ddns.sakuraikaede.c
 # Shadowsocks 协议示例
 ss://MjAyMi1ibGFrZTMtYWVzLTEyOC1nY206TWpBMFl6Z3daakJsTTJaa05tUmxOQT09OlpETmpNR1E0WkRjdE5qUmpOeTAwT0E9PQ@hkaws.go52pokemon.com:54259#🇹🇼台湾家宽节点
 
+# SOCKS5 协议示例
+socks5://user:pass@example.com:1080#SOCKS5节点
+
+# SOCKS5 简写格式示例
+142.111.48.253:7030:username:password
+
 # Trojan 协议示例
 trojan://d3c0d8d7-64c7-489c-8adb-e955615e7baa@sskr01.go52pokemon.com:59110?allowInsecure=1&peer=www.volcengine.com&sni=www.volcengine.com&type=tcp#🇰🇷韩国家宽节点
 

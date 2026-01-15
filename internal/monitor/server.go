@@ -97,6 +97,7 @@ func NewServer(cfg Config, mgr *Manager, logger *log.Logger) *Server {
 	mux.HandleFunc("/api/settings", s.withAuth(s.handleSettings))
 	mux.HandleFunc("/api/nodes", s.withAuth(s.handleNodes))
 	mux.HandleFunc("/api/nodes/config", s.withAuth(s.handleConfigNodes))
+	mux.HandleFunc("/api/nodes/config/import", s.withAuth(s.handleConfigNodeImport))
 	mux.HandleFunc("/api/nodes/config/", s.withAuth(s.handleConfigNodeItem))
 	mux.HandleFunc("/api/nodes/probe-all", s.withAuth(s.handleProbeAll))
 	mux.HandleFunc("/api/nodes/", s.withAuth(s.handleNodeAction))
@@ -953,6 +954,15 @@ func (p nodePayload) toConfig() config.NodeConfig {
 	}
 }
 
+type nodeImportPayload struct {
+	Content string `json:"content"`
+}
+
+type nodeImportFailure struct {
+	URI   string `json:"uri"`
+	Error string `json:"error"`
+}
+
 // handleConfigNodes handles GET (list) and POST (create) for config nodes.
 func (s *Server) handleConfigNodes(w http.ResponseWriter, r *http.Request) {
 	if !s.ensureNodeManager(w) {
@@ -983,6 +993,64 @@ func (s *Server) handleConfigNodes(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+// handleConfigNodeImport handles bulk import for config nodes.
+func (s *Server) handleConfigNodeImport(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureNodeManager(w) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload nodeImportPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		writeJSON(w, map[string]any{"error": "请求格式错误"})
+		return
+	}
+
+	content := strings.TrimSpace(payload.Content)
+	if content == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		writeJSON(w, map[string]any{"error": "内容不能为空"})
+		return
+	}
+
+	nodes, err := config.ParseNodesFromContent(content)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		writeJSON(w, map[string]any{"error": err.Error()})
+		return
+	}
+	if len(nodes) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		writeJSON(w, map[string]any{"error": "未识别到节点"})
+		return
+	}
+
+	created := make([]config.NodeConfig, 0, len(nodes))
+	failed := make([]nodeImportFailure, 0)
+	for _, node := range nodes {
+		createdNode, err := s.nodeMgr.CreateNode(r.Context(), node)
+		if err != nil {
+			failed = append(failed, nodeImportFailure{
+				URI:   node.URI,
+				Error: err.Error(),
+			})
+			continue
+		}
+		created = append(created, createdNode)
+	}
+
+	message := fmt.Sprintf("已导入 %d 个节点，失败 %d 个，请点击重载使配置生效", len(created), len(failed))
+	writeJSON(w, map[string]any{
+		"added":   len(created),
+		"failed":  failed,
+		"message": message,
+	})
 }
 
 // handleConfigNodeItem handles PUT (update) and DELETE for a specific config node.
