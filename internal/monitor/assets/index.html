@@ -193,7 +193,7 @@
 
     .export-url {
       display: grid;
-      grid-template-columns: 110px 1fr auto;
+      grid-template-columns: 110px 1fr auto auto;
       gap: 10px;
       align-items: center;
       margin-top: 10px;
@@ -1005,16 +1005,19 @@
           <div class="export-label">HTTP 代理订阅</div>
           <input class="form-input" id="exportUrlInput" placeholder="HTTP 订阅地址" readonly />
           <button class="btn btn-secondary btn-sm" onclick="copyExportUrl('exportUrlInput')">复制</button>
+          <button class="btn btn-secondary btn-sm" onclick="copyExportContent('http')">复制原始</button>
         </div>
         <div class="export-url">
           <div class="export-label">V2Ray 订阅</div>
           <input class="form-input" id="exportUrlV2RayInput" placeholder="V2Ray 订阅地址" readonly />
           <button class="btn btn-secondary btn-sm" onclick="copyExportUrl('exportUrlV2RayInput')">复制</button>
+          <button class="btn btn-secondary btn-sm" onclick="copyExportContent('v2ray')">复制原始</button>
         </div>
         <div class="export-url">
           <div class="export-label">Clash 订阅</div>
           <input class="form-input" id="exportUrlClashInput" placeholder="Clash 订阅地址" readonly />
           <button class="btn btn-secondary btn-sm" onclick="copyExportUrl('exportUrlClashInput')">复制</button>
+          <button class="btn btn-secondary btn-sm" onclick="copyExportContent('clash')">复制原始</button>
         </div>
         <div class="stat-trend" id="exportUrlHint">加载中...</div>
       </div>
@@ -1347,6 +1350,8 @@
       }
     }
 
+    let exportUrls = { http: '', v2ray: '', clash: '' };
+
     async function loadExportUrl() {
       const input = document.getElementById('exportUrlInput');
       const inputV2Ray = document.getElementById('exportUrlV2RayInput');
@@ -1362,9 +1367,12 @@
           return;
         }
         const data = await res.json();
-        input.value = data.export_url || '';
-        inputV2Ray.value = data.export_url_v2ray || '';
-        inputClash.value = data.export_url_clash || '';
+        exportUrls.http = data.export_url || '';
+        exportUrls.v2ray = data.export_url_v2ray || '';
+        exportUrls.clash = data.export_url_clash || '';
+        input.value = exportUrls.http;
+        inputV2Ray.value = exportUrls.v2ray;
+        inputClash.value = exportUrls.clash;
 
         if (data.warning) {
           hint.textContent = data.warning;
@@ -1422,6 +1430,42 @@
         } catch (fallbackErr) {
           showToast('复制失败，请手动复制', 'error');
         }
+      }
+    }
+
+    async function copyExportContent(kind) {
+      const url = exportUrls[kind] || '';
+      if (!url) {
+        showToast('暂无可复制的订阅内容', 'error');
+        return;
+      }
+      try {
+        const res = await fetch(url);
+        if (res.status === 401) {
+          showToast('请先登录', 'error');
+          document.getElementById('loginOverlay').classList.add('show');
+          return;
+        }
+        if (!res.ok) {
+          throw new Error('获取订阅内容失败');
+        }
+        const text = await res.text();
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textarea);
+        }
+        showToast('订阅内容已复制', 'success');
+      } catch (err) {
+        showToast('复制失败: ' + err.message, 'error');
       }
     }
 
