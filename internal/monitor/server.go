@@ -595,6 +595,18 @@ func (s *Server) handleExportV2Ray(w http.ResponseWriter, r *http.Request) {
 		if _, ok := seen[uri]; ok {
 			continue
 		}
+		if parsed, err := url.Parse(uri); err == nil {
+			if scheme := strings.ToLower(parsed.Scheme); scheme == "socks5" {
+				parsed.Scheme = "socks"
+				uri = parsed.String()
+			}
+			if parsed.Fragment == "" && snap.Name != "" {
+				uri = uri + "#" + url.QueryEscape(snap.Name)
+			}
+		}
+		if _, ok := seen[uri]; ok {
+			continue
+		}
 		seen[uri] = struct{}{}
 		lines = append(lines, uri)
 	}
