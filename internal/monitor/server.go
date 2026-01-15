@@ -160,6 +160,10 @@ func (s *Server) updateSettings(externalIP, probeTarget string, skipCertVerify b
 	s.cfgMu.Lock()
 	defer s.cfgMu.Unlock()
 
+	if nodesFile == "" && len(subscriptions) > 0 {
+		nodesFile = "nodes.txt"
+	}
+
 	s.cfg.ExternalIP = externalIP
 	s.cfg.ProbeTarget = probeTarget
 	s.cfg.SkipCertVerify = skipCertVerify
