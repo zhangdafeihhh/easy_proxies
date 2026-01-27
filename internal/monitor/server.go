@@ -542,7 +542,8 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 只导出初始检查通过的可用节点
-	snapshots := s.mgr.SnapshotFiltered(true)
+	onlyAvailable := !exportIncludeAll(r)
+	snapshots := s.mgr.SnapshotFiltered(onlyAvailable)
 	var lines []string
 
 	for _, snap := range snapshots {
@@ -584,7 +585,8 @@ func (s *Server) handleExportV2Ray(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snapshots := s.mgr.SnapshotFiltered(true)
+	onlyAvailable := !exportIncludeAll(r)
+	snapshots := s.mgr.SnapshotFiltered(onlyAvailable)
 	lines := make([]string, 0, len(snapshots))
 	seen := make(map[string]struct{})
 	for _, snap := range snapshots {
@@ -625,7 +627,8 @@ func (s *Server) handleExportClash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snapshots := s.mgr.SnapshotFiltered(true)
+	onlyAvailable := !exportIncludeAll(r)
+	snapshots := s.mgr.SnapshotFiltered(onlyAvailable)
 	proxies := make([]map[string]any, 0, len(snapshots))
 	names := make([]string, 0, len(snapshots))
 	used := make(map[string]int)
@@ -757,6 +760,23 @@ func (s *Server) resolveExternalIP() (string, string) {
 		return ip, "auto"
 	}
 	return "", "unset"
+}
+
+func exportIncludeAll(r *http.Request) bool {
+	query := r.URL.Query()
+	if isTruthy(query.Get("all")) {
+		return true
+	}
+	return isTruthy(query.Get("include_failed"))
+}
+
+func isTruthy(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) fetchExternalIP() (string, bool) {

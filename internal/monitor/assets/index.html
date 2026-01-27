@@ -39,7 +39,7 @@
     }
 
     .app {
-      max-width: 1200px;
+      max-width: 1280px;
       margin: 0 auto;
       padding: 40px 20px;
     }
@@ -193,7 +193,7 @@
 
     .export-url {
       display: grid;
-      grid-template-columns: 130px 1fr auto auto;
+      grid-template-columns: 130px 1fr auto auto auto auto;
       gap: 10px;
       align-items: center;
       margin-top: 10px;
@@ -214,6 +214,10 @@
       padding: 10px 12px;
       font-size: 13px;
       width: 100%;
+    }
+
+    .btn-wide {
+      min-width: 92px;
     }
 
     /* Nodes Grid */
@@ -1012,18 +1016,24 @@
           <input class="form-input" id="exportUrlInput" placeholder="HTTP 订阅地址" readonly />
           <button class="btn btn-secondary btn-sm" onclick="copyExportUrl('exportUrlInput')">复制</button>
           <button class="btn btn-secondary btn-sm" onclick="copyExportContent('http')">复制原始</button>
+          <button class="btn btn-secondary btn-sm btn-wide" onclick="copyExportUrlAll('http')">复制所有</button>
+          <button class="btn btn-secondary btn-sm btn-wide" onclick="copyExportContent('http', true)">复制所有原始</button>
         </div>
         <div class="export-url">
           <div class="export-label">V2Ray 订阅</div>
           <input class="form-input" id="exportUrlV2RayInput" placeholder="V2Ray 订阅地址" readonly />
           <button class="btn btn-secondary btn-sm" onclick="copyExportUrl('exportUrlV2RayInput')">复制</button>
           <button class="btn btn-secondary btn-sm" onclick="copyExportContent('v2ray')">复制原始</button>
+          <button class="btn btn-secondary btn-sm btn-wide" onclick="copyExportUrlAll('v2ray')">复制所有</button>
+          <button class="btn btn-secondary btn-sm btn-wide" onclick="copyExportContent('v2ray', true)">复制所有原始</button>
         </div>
         <div class="export-url">
           <div class="export-label">Clash 订阅</div>
           <input class="form-input" id="exportUrlClashInput" placeholder="Clash 订阅地址" readonly />
           <button class="btn btn-secondary btn-sm" onclick="copyExportUrl('exportUrlClashInput')">复制</button>
           <button class="btn btn-secondary btn-sm" onclick="copyExportContent('clash')">复制原始</button>
+          <button class="btn btn-secondary btn-sm btn-wide" onclick="copyExportUrlAll('clash')">复制所有</button>
+          <button class="btn btn-secondary btn-sm btn-wide" onclick="copyExportContent('clash', true)">复制所有原始</button>
         </div>
         <div class="stat-trend" id="exportUrlHint">加载中...</div>
       </div>
@@ -1418,29 +1428,23 @@
         showToast('暂无可复制的订阅地址', 'error');
         return;
       }
-      try {
-        if (navigator.clipboard && window.isSecureContext) {
-          await navigator.clipboard.writeText(input.value);
-        } else {
-          input.focus();
-          input.select();
-          document.execCommand('copy');
-        }
-        showToast('订阅地址已复制', 'success');
-      } catch (err) {
-        try {
-          input.focus();
-          input.select();
-          document.execCommand('copy');
-          showToast('订阅地址已复制', 'success');
-        } catch (fallbackErr) {
-          showToast('复制失败，请手动复制', 'error');
-        }
-      }
+      await copyText(input.value, '订阅地址已复制');
     }
 
-    async function copyExportContent(kind) {
-      const url = exportUrls[kind] || '';
+    async function copyExportUrlAll(kind) {
+      const url = appendQueryParam(exportUrls[kind] || '', 'all', '1');
+      if (!url) {
+        showToast('暂无可复制的订阅地址', 'error');
+        return;
+      }
+      await copyText(url, '订阅地址已复制');
+    }
+
+    async function copyExportContent(kind, includeAll = false) {
+      let url = exportUrls[kind] || '';
+      if (includeAll) {
+        url = appendQueryParam(url, 'all', '1');
+      }
       if (!url) {
         showToast('暂无可复制的订阅内容', 'error');
         return;
@@ -1456,6 +1460,26 @@
           throw new Error('获取订阅内容失败');
         }
         const text = await res.text();
+        await copyText(text, '订阅内容已复制');
+      } catch (err) {
+        showToast('复制失败: ' + err.message, 'error');
+      }
+    }
+
+    function appendQueryParam(url, key, value) {
+      if (!url) {
+        return '';
+      }
+      const separator = url.includes('?') ? '&' : '?';
+      return `${url}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+    }
+
+    async function copyText(text, successMessage) {
+      if (!text) {
+        showToast('暂无可复制的内容', 'error');
+        return;
+      }
+      try {
         if (navigator.clipboard && window.isSecureContext) {
           await navigator.clipboard.writeText(text);
         } else {
@@ -1469,7 +1493,7 @@
           document.execCommand('copy');
           document.body.removeChild(textarea);
         }
-        showToast('订阅内容已复制', 'success');
+        showToast(successMessage, 'success');
       } catch (err) {
         showToast('复制失败: ' + err.message, 'error');
       }
